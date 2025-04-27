@@ -7,51 +7,18 @@ import { LRUCache } from 'lru-cache';
 import pLimit from 'p-limit';
 import { Webhook, MessageBuilder } from 'discord-webhook-node';
 
-// ========== CONFIG ========== //
-const MORALIS_KEYS = safeParseJson(process.env.MORALIS_KEYS) || [];
-const MID_TIER_WEBHOOK = process.env.MID_TIER_WEBHOOK || '';
-const HIGH_TIER_WEBHOOK = process.env.HIGH_TIER_WEBHOOK || '';
-
-if (!MORALIS_KEYS.length || !MID_TIER_WEBHOOK || !HIGH_TIER_WEBHOOK) {
-  console.error('❌ Missing .env configs. Exiting...');
-  process.exit(1);
-}
+// CONFIGS
+const MORALIS_KEYS = JSON.parse(process.env.MORALIS_KEYS);
+const MID_TIER_WEBHOOK = process.env.MID_TIER_WEBHOOK;
+const HIGH_TIER_WEBHOOK = process.env.HIGH_TIER_WEBHOOK;
 
 const MID_TIER_WEBHOOK_CLIENT = new Webhook(MID_TIER_WEBHOOK);
 const HIGH_TIER_WEBHOOK_CLIENT = new Webhook(HIGH_TIER_WEBHOOK);
 
 const hoursPerBlock = 6;
-const keysPerDay = [...MORALIS_KEYS];
+const keysPerDay = MORALIS_KEYS.slice();
 const dailyKeyOrder = shuffleArray(keysPerDay);
 const startOfDay = new Date().setHours(0, 0, 0, 0);
-
-const LOG_FILE = 'tokens.log';
-const limit = pLimit(5);
-const trackedMidTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 20 }); // 20 min
-const trackedHighTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 }); // 2 hours
-const PUMP_DEXES = new Set(['pumpfun', 'pumpswap']);
-
-let pollInterval = 30000;
-let isRunning = false;
-
-// ========== HELPERS ========== //
-
-function log(message) {
-  const text = `[${new Date().toISOString()}] ${message}`;
-  console.log(text);
-  fs.appendFileSync(LOG_FILE, text + '\n');
-}
-
-function safeParseJson(jsonStr) {
-  try { return JSON.parse(jsonStr); } 
-  catch { return null; }
-}
-
-function shuffleArray(arr) {
-  return arr.map(val => ({ val, sort: Math.random() }))
-    .sort((a, b) => a.sort - b.sort)
-    .map(({ val }) => val);
-}
 
 function getCurrentMoralisKey() {
   const now = Date.now();
@@ -60,70 +27,59 @@ function getCurrentMoralisKey() {
   return dailyKeyOrder[index];
 }
 
-function getTokenAgeMinutes(date) {
-  return (Date.now() - new Date(date).getTime()) / 60000;
+function shuffleArray(arr) {
+  return arr
+    .map((val) => ({ val, sort: Math.random() }))
+    .sort((a, b) => a.sort - b.sort)
+    .map(({ val }) => val);
 }
 
-async function retry(fn, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try { return await fn(); }
-    catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, 500));
-    }
+const LOG_FILE = 'tokens.log';
+const trackedMidTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 }); // 2 hr tracking for mid
+const trackedHighTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 }); // 2 hr tracking for high
+const limit = pLimit(5);
+let pollInterval = 30000;
+
+function log(message) {
+  const logMsg = `[${new Date().toISOString()}] ${message}`;
+  console.log(logMsg);
+  fs.appendFileSync(LOG_FILE, logMsg + '\n');
+}
+
+async function fetchNewMoralisTokens() {
+  try {
+    const res = await fetch(
+      'https://solana-gateway.moralis.io/token/mainnet/exchange/pumpfun/new?limit=100',
+      {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'X-API-Key': getCurrentMoralisKey(),
+        },
+      }
+    );
+    const data = await res.json();
+    return data?.result || [];
+  } catch (err) {
+    log(`❌ Moralis Fetch Error: ${err.message}`);
+    return [];
   }
 }
 
-// ========== FETCHERS ========== //
-
-async function fetchNewMoralisTokens() {
-  return retry(async () => {
-    const res = await fetch('https://solana-gateway.moralis.io/token/mainnet/exchange/pumpfun/new?limit=100', {
-      method: 'GET',
-      headers: { accept: 'application/json', 'X-API-Key': getCurrentMoralisKey() },
-    });
-    const data = await res.json();
-    return data?.result || [];
-  }).catch(err => {
-    log(`❌ Moralis Fetch Error: ${err.message}`);
-    return [];
-  });
-}
-
 async function fetchDexscreenerDetails(tokenAddress) {
-  return retry(async () => {
+  try {
     const { data } = await axios.get(`https://api.dexscreener.com/tokens/v1/solana/${tokenAddress}`);
     return data?.[0] || null;
-  }).catch(err => {
-    log(`❌ Dexscreener Fetch Error: ${err.message}`);
+  } catch (err) {
+    log(`❌ Dexscreener Error for ${tokenAddress}: ${err.message}`);
     return null;
-  });
+  }
 }
 
-async function fetchLatestTokenProfiles() {
-  return retry(async () => {
-    const { data } = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1');
-    return data || [];
-  }).catch(err => {
-    log(`❌ Token Profiles Fetch Error: ${err.message}`);
-    return [];
-  });
-}
-
-async function fetchTokenPairs(tokenAddress) {
-  return retry(async () => {
-    const { data } = await axios.get(`https://api.dexscreener.com/token-pairs/v1/solana/${tokenAddress}`);
-    return data || [];
-  }).catch(err => {
-    log(`❌ Token Pairs Fetch Error (${tokenAddress}): ${err.message}`);
-    return [];
-  });
-}
-
-// ========== DISCORD SENDERS ========== //
-
-async function sendToDiscord(details, webhookClient, icon = '') {
-  const { baseToken, marketCap, priceUsd, volume, txns, priceChange, url, pairAddress } = details;
+async function sendToDiscord(token, webhookClient, icon = '') {
+  const {
+    baseToken, marketCap, priceUsd, volume, txns, priceChange, url, pairAddress
+  } = token;
 
   const embed = new MessageBuilder()
     .setTitle(`🚀 ${baseToken.name} ($${baseToken.symbol})`)
@@ -140,11 +96,103 @@ async function sendToDiscord(details, webhookClient, icon = '') {
     .setFooter(`🚨 PumpFun Alert • ${new Date().toLocaleTimeString()}`)
     .setTimestamp();
 
-  await webhookClient.send(embed);
+  try {
+    await webhookClient.send(embed);
+    log(`✅ Sent ${baseToken.symbol} to Discord (${webhookClient.url.includes('mid') ? 'Mid' : 'High'})`);
+  } catch (err) {
+    log(`❌ Discord Error: ${err.message}`);
+  }
+}
+
+function getTokenAgeMinutes(createdAt) {
+  return (Date.now() - new Date(createdAt).getTime()) / 60000;
+}
+
+async function checkTokens() {
+  log(`🚀 [ROUND STARTED]`);
+
+  const tokens = await fetchNewMoralisTokens();
+  let goodCount = 0;
+
+  await Promise.all(
+    tokens.map((token) =>
+      limit(async () => {
+        const ca = token.tokenAddress;
+        const fdv = Number(token.fullyDilutedValuation);
+        const age = getTokenAgeMinutes(token.createdAt);
+
+        if (fdv < 16900) return log(`⏩ Skipping ${ca} — FDV: $${fdv} < 16900`);
+        if (age > 20) return log(`⏩ Skipping ${ca} — Age: ${age.toFixed(2)} mins > 20`);
+
+        const details = await fetchDexscreenerDetails(ca);
+        if (!details) return log(`❌ Skipped ${ca} — No DexScreener details`);
+
+        const mcap = details.marketCap ?? 0;
+        const tokenCreatedAt = details.pairCreatedAt ?? token.createdAt;
+        const ageMinutes = getTokenAgeMinutes(tokenCreatedAt);
+
+        log(`🔍 Evaluating ${ca} — mcap: $${mcap}, age: ${ageMinutes.toFixed(1)} mins`);
+
+        const shouldSendMid = mcap >= 16900 && mcap < 80000 && ageMinutes <= 20;
+        const shouldSendHigh = mcap >= 80000 && ageMinutes <= 120;
+
+        if (shouldSendMid && !trackedMidTier.has(ca)) {
+          await sendToDiscord(details, MID_TIER_WEBHOOK_CLIENT);
+          trackedMidTier.set(ca, Date.now());
+          goodCount++;
+        }
+
+        if (shouldSendHigh && !trackedHighTier.has(ca)) {
+          await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT);
+          trackedHighTier.set(ca, Date.now());
+          goodCount++;
+        }
+      })
+    )
+  );
+
+  pollInterval = goodCount >= 2 ? 15000 : 30000;
+
+  log(`✅ [ROUND ENDED] Checked ${tokens.length} tokens | Sent ${goodCount} tokens | Next poll: ${pollInterval / 1000}s`);
+}
+
+function scheduleNextPoll() {
+  setTimeout(async () => {
+    await checkTokens();
+    await checkOtherDexTokens();
+    await recheckForHighTier();
+    scheduleNextPoll();
+  }, pollInterval);
+}
+
+// ========== NON-PUMP TOKENS CHECKER ==========
+
+const PUMP_DEXES = new Set(["pumpfun", "pumpswap"]);
+
+async function fetchLatestTokenProfiles() {
+  try {
+    const response = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1');
+    return response.data || [];
+  } catch (error) {
+    log("❌ Token profile fetch error: " + error.message);
+    return [];
+  }
+}
+
+async function fetchTokenPairs(tokenAddress) {
+  try {
+    const response = await axios.get(`https://api.dexscreener.com/token-pairs/v1/solana/${tokenAddress}`);
+    return response.data || [];
+  } catch (error) {
+    log(`❌ Pair fetch error for ${tokenAddress}: ` + error.message);
+    return [];
+  }
 }
 
 async function sendToDiscordAlt(pair) {
-  const { baseToken, dexId, priceUsd, txns, url, volume, priceChange } = pair;
+  const {
+    baseToken, dexId, priceUsd, txns, url, volume, priceChange, pairAddress
+  } = pair;
 
   const embed = new MessageBuilder()
     .setTitle(`${baseToken.symbol} listed on ${dexId.toUpperCase()}`)
@@ -154,104 +202,77 @@ async function sendToDiscordAlt(pair) {
     .addField('🧯 Sells (5m)', `${txns?.m5?.sells || 0}`, true)
     .addField('📊 Volume (5m)', `$${Math.round(volume?.m5 || 0)}`, true)
     .addField('📉 Price Change (5m)', `${priceChange?.m5 || 0}%`, true)
+    .addField('🔗 Photon', `[View on Photon](https://photon-sol.tinyastro.io/en/lp/${pairAddress})`, true)
     .addField('📜 Contract', `\`${baseToken.address}\``, false)
     .setColor('#00b0f4')
     .setTimestamp();
 
-  await MID_TIER_WEBHOOK_CLIENT.send(embed);
-}
-
-// ========== CHECKERS ========== //
-
-async function checkPumpTokens() {
-  log(`🚀 [ROUND STARTED: PumpFun]`);
-  const tokens = await fetchNewMoralisTokens();
-  let sentCount = 0;
-
-  await Promise.all(tokens.map(token => limit(async () => {
-    const ca = token.tokenAddress;
-    const fdv = Number(token.fullyDilutedValuation);
-    const age = getTokenAgeMinutes(token.createdAt);
-
-    if (fdv < 16900 || age > 20) return;
-
-    const details = await fetchDexscreenerDetails(ca);
-    if (!details) return;
-
-    const mcap = details.marketCap ?? 0;
-    const tokenCreatedAt = details.pairCreatedAt ?? token.createdAt;
-    const ageMinutes = getTokenAgeMinutes(tokenCreatedAt);
-
-    const shouldSendMid = mcap >= 16900 && mcap < 80000 && ageMinutes <= 20;
-    const shouldSendHigh = mcap >= 80000 && ageMinutes <= 120;
-
-    if (shouldSendMid && !trackedMidTier.has(ca)) {
-      await sendToDiscord(details, MID_TIER_WEBHOOK_CLIENT);
-      trackedMidTier.set(ca, Date.now());
-      sentCount++;
-    }
-
-    if (shouldSendHigh && !trackedHighTier.has(ca)) {
-      await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT);
-      trackedHighTier.set(ca, Date.now());
-      sentCount++;
-    }
-  })));
-
-  log(`✅ [ROUND ENDED] Pump Tokens: ${tokens.length} checked | ${sentCount} sent`);
-  return sentCount;
+  try {
+    await MID_TIER_WEBHOOK_CLIENT.send(embed);
+    log(`✅ Non-pump token sent: ${baseToken.symbol} on ${dexId}`);
+  } catch (e) {
+    log("❌ Webhook error (non-pump): " + e.message);
+  }
 }
 
 async function checkOtherDexTokens() {
-  log(`🚀 [ROUND STARTED: Other Dex]`);
   const profiles = await fetchLatestTokenProfiles();
-  let sentCount = 0;
 
-  for (const profile of profiles) {
-    const tokenAddress = profile.tokenAddress;
-    if (trackedMidTier.has(tokenAddress) || trackedHighTier.has(tokenAddress)) continue;
+  await Promise.all(
+    profiles.map((profile) =>
+      limit(async () => {
+        const tokenAddress = profile.tokenAddress;
+        if (trackedMidTier.has(tokenAddress) || trackedHighTier.has(tokenAddress)) return;
 
-    const pairs = await fetchTokenPairs(tokenAddress);
-    for (const pair of pairs) {
-      const { dexId, txns, volume, fdv, pairCreatedAt } = pair;
-      if (PUMP_DEXES.has(dexId)) continue;
+        const pairs = await fetchTokenPairs(tokenAddress);
 
-      const ageMinutes = getTokenAgeMinutes(pairCreatedAt);
-      const buys5m = txns?.m5?.buys ?? 0;
-      const volume5m = volume?.m5 ?? 0;
-      const fdvValue = Number(fdv) || 0;
+        for (const pair of pairs) {
+          const { dexId, txns, volume, fdv, pairCreatedAt } = pair;
 
-      if (fdvValue >= 16900 && buys5m >= 5 && volume5m >= 500 && ageMinutes <= 20) {
-        await sendToDiscordAlt(pair);
-        trackedMidTier.set(tokenAddress, Date.now());
-        sentCount++;
-        break;
-      }
-    }
-  }
+          if (PUMP_DEXES.has(dexId)) continue;
 
-  log(`✅ [ROUND ENDED] Non-Pump Tokens: ${sentCount} sent`);
-  return sentCount;
+          const ageMinutes = (Date.now() - new Date(pairCreatedAt).getTime()) / 60000;
+          const buys5m = txns?.m5?.buys ?? 0;
+          const volume5m = volume?.m5 ?? 0;
+          const fdvValue = Number(fdv) || 0;
+
+          if (fdvValue >= 16900 && buys5m >= 5 && volume5m >= 500 && ageMinutes <= 20) {
+            await sendToDiscordAlt(pair);
+            trackedMidTier.set(tokenAddress, Date.now());
+            break; // only send one good non-pump pair
+          } else {
+            log(`⏩ Skipped non-pump ${tokenAddress} — FDV: $${fdvValue}, Buys: ${buys5m}, Volume: $${volume5m}, Age: ${ageMinutes.toFixed(1)} mins`);
+          }
+        }
+      })
+    )
+  );
 }
 
-// ========== MAIN LOOP ========== //
+// ========== RECHECK FOR HIGH TIER BREAKOUT ==========
 
-async function mainLoop() {
-  if (isRunning) return;
-  isRunning = true;
+async function recheckForHighTier() {
+  const allTokens = Array.from(trackedMidTier.keys());
 
-  try {
-    const pumpSent = await checkPumpTokens();
-    const otherSent = await checkOtherDexTokens();
+  await Promise.all(
+    allTokens.map((tokenAddress) =>
+      limit(async () => {
+        const details = await fetchDexscreenerDetails(tokenAddress);
+        if (!details) return;
 
-    const totalSent = pumpSent + otherSent;
-    pollInterval = totalSent >= 2 ? 15000 : 30000;
-  } catch (err) {
-    log(`❌ Main loop error: ${err.message}`);
-  } finally {
-    isRunning = false;
-    setTimeout(mainLoop, pollInterval);
-  }
+        const mcap = details.marketCap ?? 0;
+        const tokenCreatedAt = details.pairCreatedAt ?? Date.now();
+        const ageMinutes = getTokenAgeMinutes(tokenCreatedAt);
+
+        if (mcap >= 80000 && ageMinutes <= 120 && !trackedHighTier.has(tokenAddress)) {
+          await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT);
+          trackedHighTier.set(tokenAddress, Date.now());
+          log(`🔥 Re-sent ${tokenAddress} to HIGH-TIER after breakout: mcap=$${mcap}`);
+        }
+      })
+    )
+  );
 }
 
-mainLoop();
+checkTokens();
+scheduleNextPoll();
