@@ -1,0 +1,104 @@
+[2025-04-28T16:17:11.168Z] 🌀 Polling Round Start
+[2025-04-28T16:17:11.738Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:17:32.340Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:17:32.341Z] ✅ Round Complete
+[2025-04-28T16:17:47.353Z] 🌀 Polling Round Start
+[2025-04-28T16:17:47.512Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:18:08.414Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:18:08.415Z] ✅ Round Complete
+[2025-04-28T16:18:23.419Z] 🌀 Polling Round Start
+[2025-04-28T16:18:23.726Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:18:44.473Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:18:44.474Z] ✅ Round Complete
+[2025-04-28T16:18:59.477Z] 🌀 Polling Round Start
+[2025-04-28T16:18:59.640Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:19:20.499Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:19:20.500Z] ✅ Round Complete
+[2025-04-28T16:19:35.514Z] 🌀 Polling Round Start
+[2025-04-28T16:19:35.667Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:19:56.576Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:19:56.576Z] ✅ Round Complete
+[2025-04-28T16:20:11.590Z] 🌀 Polling Round Start
+[2025-04-28T16:20:11.771Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:20:32.629Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:20:32.630Z] ✅ Round Complete
+[2025-04-28T16:20:47.644Z] 🌀 Polling Round Start
+[2025-04-28T16:20:47.820Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:21:08.676Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:21:08.678Z] ✅ Round Complete
+[2025-04-28T16:21:23.681Z] 🌀 Polling Round Start
+[2025-04-28T16:21:23.836Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:21:44.739Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:21:44.739Z] ✅ Round Complete
+[2025-04-28T16:21:59.743Z] 🌀 Polling Round Start
+[2025-04-28T16:21:59.903Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:22:03.800Z] ✅ [MID] Dex (pumpfun)
+[2025-04-28T16:22:20.765Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:22:20.765Z] ✅ Round Complete
+[2025-04-28T16:22:35.773Z] 🌀 Polling Round Start
+[2025-04-28T16:22:36.270Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:22:56.845Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:22:56.845Z] ✅ Round Complete
+[2025-04-28T16:23:11.855Z] 🌀 Polling Round Start
+[2025-04-28T16:23:12.022Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:23:32.906Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:23:32.907Z] ✅ Round Complete
+[2025-04-28T16:23:47.912Z] 🌀 Polling Round Start
+[2025-04-28T16:23:48.075Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:24:08.949Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:24:08.950Z] ✅ Round Complete
+[2025-04-28T16:24:23.965Z] 🌀 Polling Round Start
+[2025-04-28T16:24:24.120Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:24:44.991Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:24:44.992Z] ✅ Round Complete
+[2025-04-28T16:24:59.995Z] 🌀 Polling Round Start
+[2025-04-28T16:25:00.163Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:25:21.032Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:25:21.033Z] ✅ Round Complete
+[2025-04-28T16:25:36.034Z] 🌀 Polling Round Start
+[2025-04-28T16:25:36.194Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:25:57.089Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:25:57.090Z] ✅ Round Complete
+[2025-04-28T16:26:12.103Z] 🌀 Polling Round Start
+[2025-04-28T16:26:12.287Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:26:33.139Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:26:33.139Z] ✅ Round Complete
+[2025-04-28T16:26:48.141Z] 🌀 Polling Round Start
+[2025-04-28T16:26:48.299Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:27:09.170Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:27:09.170Z] ✅ Round Complete
+[2025-04-28T16:27:24.171Z] 🌀 Polling Round Start
+[2025-04-28T16:27:24.329Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:27:45.207Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:27:45.208Z] ✅ Round Complete
+[2025-04-28T16:28:00.210Z] 🌀 Polling Round Start
+[2025-04-28T16:28:00.989Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:28:21.273Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:28:21.274Z] ✅ Round Complete
+[2025-04-28T16:28:36.275Z] 🌀 Polling Round Start
+[2025-04-28T16:28:36.428Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:28:57.307Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:28:57.307Z] ✅ Round Complete
+[2025-04-28T16:29:12.317Z] 🌀 Polling Round Start
+[2025-04-28T16:29:12.466Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:29:16.715Z] ✅ [MID] BANK (pumpfun)
+[2025-04-28T16:29:33.390Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:29:33.391Z] ✅ Round Complete
+[2025-04-28T16:29:48.394Z] 🌀 Polling Round Start
+[2025-04-28T16:29:48.551Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:30:09.459Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:30:09.459Z] ✅ Round Complete
+[2025-04-28T16:30:24.471Z] 🌀 Polling Round Start
+[2025-04-28T16:30:24.623Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:30:45.517Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:30:45.517Z] ✅ Round Complete
+[2025-04-28T16:31:00.532Z] 🌀 Polling Round Start
+[2025-04-28T16:31:00.691Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:31:04.072Z] ✅ [MID] BOTMO (pumpfun)
+[2025-04-28T16:31:09.750Z] ✅ [MID] AG2 (pumpfun)
+[2025-04-28T16:31:21.568Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:31:21.569Z] ✅ Round Complete
+[2025-04-28T16:31:36.572Z] 🌀 Polling Round Start
+[2025-04-28T16:31:36.728Z] ❌ Raydium Fetch Error: Request failed with status code 404
+[2025-04-28T16:31:57.602Z] ❌ LaunchLabs Fetch Error: connect ETIMEDOUT 192.64.119.131:443
+[2025-04-28T16:31:57.603Z] ✅ Round Complete
