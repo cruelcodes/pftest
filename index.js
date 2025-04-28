@@ -23,6 +23,8 @@ const startOfDay = new Date().setHours(0, 0, 0, 0);
 const LOG_FILE = 'tokens.log';
 const trackedMidTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 }); // 2 hours
 const trackedHighTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 });
+const pendingRaydiumTokens = new LRUCache({ max: 2000, ttl: 1000 * 60 * 120 }); // track Raydium tokens for 2 hours
+
 const limit = pLimit(5);
 
 let pollInterval = 30000;
@@ -157,39 +159,53 @@ async function checkRaydiumTokens() {
 
   await Promise.all(pairs.map((pair) =>
     limit(async () => {
-      const { marketInfo, baseMint, name, symbol, marketCap, createdAt, price, volume24hQuote } = pair;
+      const { marketInfo, baseMint, name, symbol, createdAt } = pair;
       const ca = baseMint;
       const age = getTokenAgeMinutes(createdAt);
 
-      if (marketCap < 16900 || age > 20) return;
-      if (trackedMidTier.has(ca) || trackedHighTier.has(ca)) return;
+      if (age > 120) return; // only track Raydium tokens under 2 hours old
+      if (pendingRaydiumTokens.has(ca)) return;
 
-      const fakeDexscreenerData = {
-        baseToken: {
-          name,
-          symbol,
-          address: ca,
-        },
-        marketCap,
-        priceUsd: price,
-        volume: { h1: (volume24hQuote ?? 0) / 24 },
-        txns: { m5: { buys: 0 } }, // Raydium doesn't provide buys directly
-        priceChange: { m5: 0 },
-        url: `https://dexscreener.com/solana/${marketInfo}`,
-        pairAddress: marketInfo,
-      };
+      pendingRaydiumTokens.set(ca, {
+        marketInfo,
+        baseMint,
+        name,
+        symbol,
+        createdAt,
+      });
+    })
+  ));
+}
 
-      const shouldMid = marketCap >= 16900 && marketCap < 80000;
-      const shouldHigh = marketCap >= 80000;
+async function processPendingRaydiumTokens() {
+  const entries = [...pendingRaydiumTokens.entries()];
 
-      if (shouldMid) {
-        await sendToDiscord(fakeDexscreenerData, MID_TIER_WEBHOOK_CLIENT, '', 'Raydium');
-        trackedMidTier.set(ca, Date.now());
-      }
+  await Promise.all(entries.map(([ca, token]) =>
+    limit(async () => {
+      try {
+        const { data } = await axios.get(`https://api.dexscreener.com/tokens/v1/solana/${ca}`);
+        const pair = data?.[0];
+        if (!pair) return;
 
-      if (shouldHigh) {
-        await sendToDiscord(fakeDexscreenerData, HIGH_TIER_WEBHOOK_CLIENT, '', 'Raydium');
-        trackedHighTier.set(ca, Date.now());
+        const mcap = pair.marketCap ?? 0;
+        const age = getTokenAgeMinutes(pair.pairCreatedAt ?? token.createdAt);
+
+        const shouldMid = mcap >= 16900 && mcap < 80000 && age <= 20;
+        const shouldHigh = mcap >= 80000 && age <= 120;
+
+        if (shouldMid && !trackedMidTier.has(ca)) {
+          await sendToDiscord(pair, MID_TIER_WEBHOOK_CLIENT, '', 'Raydium');
+          trackedMidTier.set(ca, Date.now());
+          pendingRaydiumTokens.delete(ca);
+        }
+
+        if (shouldHigh && !trackedHighTier.has(ca)) {
+          await sendToDiscord(pair, HIGH_TIER_WEBHOOK_CLIENT, '', 'Raydium');
+          trackedHighTier.set(ca, Date.now());
+          pendingRaydiumTokens.delete(ca);
+        }
+      } catch (err) {
+        log(`❌ Dexscreener Fetch Error for Raydium ${ca}: ${err.message}`);
       }
     })
   ));
@@ -202,6 +218,7 @@ function scheduleNextPoll() {
     log(`🚀 [POLL START]`);
     await checkPumpfunTokens();
     await checkRaydiumTokens();
+    await processPendingRaydiumTokens();
     log(`✅ [POLL DONE] Next poll in ${pollInterval / 1000}s`);
     scheduleNextPoll();
   }, pollInterval);
@@ -210,4 +227,5 @@ function scheduleNextPoll() {
 // START
 checkPumpfunTokens();
 checkRaydiumTokens();
+processPendingRaydiumTokens();
 scheduleNextPoll();
