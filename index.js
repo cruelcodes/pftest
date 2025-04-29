@@ -275,20 +275,26 @@ async function checkGraduatedTokens() {
   await Promise.all(tokens.map((token) =>
     limit(async () => {
       const ca = token.tokenAddress;
-      const fdv = Number(token.fullyDilutedValuation) || 0;
-      const age = getTokenAgeMinutes(token.createdAt);
 
-      if (fdv >= 69000 && age <= 60 && !trackedHighTier.has(ca)) { // ✅ only < 1 hr old
-        const details = await fetchDexscreenerDetails(ca);
-        if (!details) return;
+      if (trackedHighTier.has(ca)) return;
 
+      const details = await fetchDexscreenerDetails(ca);
+      if (!details) return;
+
+      const mcap = details.marketCap ?? 0;
+      const ageMinutes = getTokenAgeMinutes(details.pairCreatedAt); // ✅ Use pairCreatedAt
+
+      if (mcap >= 69000 && ageMinutes <= 60) { // ✅ 1 hour fresh based on new pairCreatedAt
         await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT, 'High');
         trackedHighTier.set(ca, Date.now());
-        log(`🎓 Sent Graduated Token ${ca} to HIGH-TIER — FDV: $${fdv}`);
+        log(`🎓 Sent Graduated Token ${ca} to HIGH-TIER — MCAP: $${mcap} — Age: ${ageMinutes.toFixed(1)} mins`);
+      } else {
+        log(`⏩ Skipped Graduated ${ca} — MCAP: $${mcap}, Age: ${ageMinutes.toFixed(1)} mins`);
       }
     })
   ));
- }
+}
+
 
 function scheduleNextPoll() {
   setTimeout(async () => {
