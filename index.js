@@ -1,11 +1,3 @@
-// ✅ CHANGES:
-// - Retry DexScreener API fetches
-// - Retry Webhook sends
-// - Lower FDV cutoff (15k instead of 16900)
-// - Better fallback for token.createdAt if pairCreatedAt is bad
-// - Clean promotion (remove from mid-tier on promote)
-// - Minor logging improvements
-
 // Dependencies: npm install node-fetch axios p-limit lru-cache dotenv discord-webhook-node
 import 'dotenv/config';
 import fetch from 'node-fetch';
@@ -24,21 +16,9 @@ const MID_TIER_WEBHOOK_CLIENT = new Webhook(MID_TIER_WEBHOOK);
 const HIGH_TIER_WEBHOOK_CLIENT = new Webhook(HIGH_TIER_WEBHOOK);
 
 const hoursPerBlock = 6;
-const keysPerDay = [...MORALIS_KEYS];
+const keysPerDay = MORALIS_KEYS.slice();
 const dailyKeyOrder = shuffleArray(keysPerDay);
 const startOfDay = new Date().setHours(0, 0, 0, 0);
-
-const LOG_FILE = 'tokens.log';
-const trackedMidTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 }); // 2 hours
-const trackedHighTier = new LRUCache({ max: 1000, ttl: 1000 * 60 * 120 });
-const limit = pLimit(5);
-let pollInterval = 30000;
-
-const PUMP_DEXES = new Set(["pumpfun", "pumpswap"]);
-
-function shuffleArray(arr) {
-  return arr.map(v => ({ v, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ v }) => v);
-}
 
 function getCurrentMoralisKey() {
   const now = Date.now();
@@ -47,41 +27,36 @@ function getCurrentMoralisKey() {
   return dailyKeyOrder[index];
 }
 
+function shuffleArray(arr) {
+  return arr
+    .map((val) => ({ val, sort: Math.random() }))
+    .sort((a, b) => a.sort - b.sort)
+    .map(({ val }) => val);
+}
+
+const LOG_FILE = 'tokens.log';
+const trackedTokens = new LRUCache({ max: 2000, ttl: 1000 * 60 * 180 }); // track 3 hours
+const limit = pLimit(5);
+let pollInterval = 30000;
+
 function log(message) {
-  const formatted = `[${new Date().toISOString()}] ${message}`;
-  console.log(formatted);
-  fs.appendFileSync(LOG_FILE, formatted + '\n');
+  const logMsg = `[${new Date().toISOString()}] ${message}`;
+  console.log(logMsg);
+  fs.appendFileSync(LOG_FILE, logMsg + '\n');
 }
-
-function getTokenAgeMinutes(createdAt) {
-  return (Date.now() - new Date(createdAt).getTime()) / 60000;
-}
-
-// 🛠️ --- PATCH START: Retryable DexScreener fetch
-async function fetchDexscreenerDetails(tokenAddress, retries = 2) {
-  try {
-    const { data } = await axios.get(`https://api.dexscreener.com/tokens/v1/solana/${tokenAddress}`);
-    return data?.[0] || null;
-  } catch (err) {
-    if (retries > 0) {
-      log(`⚠️ Dexscreener fetch retry for ${tokenAddress} (${retries} retries left)`);
-      await new Promise(res => setTimeout(res, 1500));
-      return fetchDexscreenerDetails(tokenAddress, retries - 1);
-    }
-    log(`❌ Dexscreener Fetch Failed for ${tokenAddress}: ${err.message}`);
-    return null;
-  }
-}
-// 🛠️ --- PATCH END
 
 async function fetchNewMoralisTokens() {
   try {
-    const res = await fetch('https://solana-gateway.moralis.io/token/mainnet/exchange/pumpfun/new?limit=100', {
-      headers: {
-        accept: 'application/json',
-        'X-API-Key': getCurrentMoralisKey(),
-      },
-    });
+    const res = await fetch(
+      'https://solana-gateway.moralis.io/token/mainnet/exchange/pumpfun/new?limit=100',
+      {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'X-API-Key': getCurrentMoralisKey(),
+        },
+      }
+    );
     const data = await res.json();
     return data?.result || [];
   } catch (err) {
@@ -90,136 +65,116 @@ async function fetchNewMoralisTokens() {
   }
 }
 
-async function fetchGraduatedTokens() {
+async function fetchDexscreenerDetails(tokenAddress, retries = 2) {
   try {
-    const res = await fetch('https://solana-gateway.moralis.io/token/mainnet/exchange/pumpfun/graduated?limit=100', {
-      headers: {
-        accept: 'application/json',
-        'X-API-Key': getCurrentMoralisKey(),
-      },
-    });
-    const data = await res.json();
-    return data?.result || [];
+    const { data } = await axios.get(`https://api.dexscreener.com/tokens/v1/solana/${tokenAddress}`);
+    return data?.[0] || null;
   } catch (err) {
-    log(`❌ Graduated Tokens Fetch Error: ${err.message}`);
-    return [];
-  }
-}
-
-// 🛠️ --- PATCH START: Retryable webhook sending
-async function safeWebhookSend(client, embed, tokenSymbol) {
-  try {
-    await client.send(embed);
-  } catch (err) {
-    log(`❌ Webhook send error for ${tokenSymbol}: ${err.message} — retrying...`);
-    try {
-      await new Promise(res => setTimeout(res, 1500));
-      await client.send(embed);
-    } catch (err2) {
-      log(`❌ Second webhook send failed for ${tokenSymbol}: ${err2.message}`);
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 1000));
+      return fetchDexscreenerDetails(tokenAddress, retries - 1);
     }
+    log(`❌ Dexscreener Error for ${tokenAddress}: ${err.message}`);
+    return null;
   }
 }
-// 🛠️ --- PATCH END
 
-async function sendToDiscord(token, webhookClient, tier, icon = '') {
-  const { baseToken, marketCap, priceUsd, volume, txns, priceChange, url, pairAddress } = token;
+async function sendToDiscord(token, webhookClient, tier) {
+  const {
+    baseToken, marketCap, priceUsd, volume, txns, priceChange, url, pairAddress
+  } = token;
 
   const embed = new MessageBuilder()
-    .setTitle(`🚀 ${baseToken.name} ($${baseToken.symbol})`)
+    .setTitle(`🚀 ${baseToken.name} ($${baseToken.symbol}) — ${tier} Tier`)
     .setURL(url)
-    .setThumbnail(icon)
+    .setThumbnail('')
     .addField('💰 Market Cap', `$${(marketCap ?? 0).toLocaleString()}`, true)
     .addField('💸 Price', `$${priceUsd}`, true)
     .addField('📊 Volume (1h)', `${volume?.h1 ?? 0} SOL`, true)
     .addField('🛒 Buys (5m)', `${txns?.m5?.buys ?? 0}`, true)
     .addField('📈 Change (5m)', `${priceChange?.m5 ?? 0}%`, true)
-    .addField('🔗 Photon', `[View](https://photon-sol.tinyastro.io/en/lp/${pairAddress})`, true)
+    .addField('🔗 Photon', `[View on Photon](https://photon-sol.tinyastro.io/en/lp/${pairAddress})`, true)
     .addField('📜 Contract', `\`${baseToken.address}\``, false)
-    .setColor('#00ffcc')
+    .setColor(tier === 'High' ? '#ff0000' : '#00ffcc')
     .setFooter(`🚨 PumpFun Alert • ${new Date().toLocaleTimeString()}`)
     .setTimestamp();
 
-  await safeWebhookSend(webhookClient, embed, baseToken.symbol);
-  log(`✅ Sent ${baseToken.symbol} to Discord (${tier})`);
+  try {
+    await webhookClient.send(embed);
+    log(`✅ Sent ${baseToken.symbol} (${tier}) to Discord`);
+  } catch (err) {
+    log(`❌ Discord Error: ${err.message}`);
+  }
 }
 
-async function sendToDiscordAlt(pair) {
-  const { baseToken, dexId, priceUsd, txns, url, volume, priceChange, pairAddress } = pair;
-
-  const embed = new MessageBuilder()
-    .setTitle(`${baseToken.symbol} listed on ${dexId.toUpperCase()}`)
-    .setURL(url)
-    .addField('💵 Price', `$${parseFloat(priceUsd).toFixed(6)}`, true)
-    .addField('🛒 Buys (5m)', `${txns?.m5?.buys ?? 0}`, true)
-    .addField('🧯 Sells (5m)', `${txns?.m5?.sells ?? 0}`, true)
-    .addField('📊 Volume (5m)', `$${Math.round(volume?.m5 ?? 0)}`, true)
-    .addField('📉 Change (5m)', `${priceChange?.m5 ?? 0}%`, true)
-    .addField('🔗 Photon', `[View](https://photon-sol.tinyastro.io/en/lp/${pairAddress})`, true)
-    .addField('📜 Contract', `\`${baseToken.address}\``, false)
-    .setColor('#00b0f4')
-    .setTimestamp();
-
-  await safeWebhookSend(MID_TIER_WEBHOOK_CLIENT, embed, baseToken.symbol);
-  log(`✅ Sent non-pump token ${baseToken.symbol} (${dexId})`);
+function getTokenAgeMinutes(createdAt) {
+  return (Date.now() - new Date(createdAt).getTime()) / 60000;
 }
 
 async function checkTokens() {
-  log(`🚀 [CHECK ROUND STARTED]`);
+  log(`🚀 [ROUND STARTED]`);
 
   const tokens = await fetchNewMoralisTokens();
-  let goodTokens = 0;
+  let goodCount = 0;
 
-  await Promise.all(tokens.map(token => limit(async () => {
-    const ca = token.tokenAddress;
-    const fdv = Number(token.fullyDilutedValuation);
-    const age = getTokenAgeMinutes(token.createdAt);
+  await Promise.all(
+    tokens.map((token) =>
+      limit(async () => {
+        const ca = token.tokenAddress;
+        const fdv = Number(token.fullyDilutedValuation);
+        const age = getTokenAgeMinutes(token.createdAt);
 
-    if (fdv < 15000) return log(`⏩ Skipped ${ca} — FDV: $${fdv} < 15000`);
-    if (age > 20) return log(`⏩ Skipped ${ca} — Age: ${age.toFixed(1)} mins > 20`);
+        if (fdv < 14690) {
+          log(`⏩ Skipping ${ca} — FDV: $${fdv} < 14690`);
+          return;
+        }
+        if (age > 20) {
+          log(`⏩ Skipping ${ca} — Age: ${age.toFixed(2)} mins > 20`);
+          return;
+        }
 
-    const details = await fetchDexscreenerDetails(ca);
-    if (!details) return;
+        const details = await fetchDexscreenerDetails(ca);
+        if (!details) {
+          log(`❌ Skipped ${ca} — No DexScreener details`);
+          return;
+        }
 
-    const mcap = details.marketCap ?? 0;
-    const realAge = getTokenAgeMinutes(details.pairCreatedAt || token.createdAt); // 🛠️ fallback
-    log(`🔍 ${ca} — mcap: $${mcap}, age: ${realAge.toFixed(1)} mins`);
+        const mcap = details.marketCap ?? 0;
+        const tokenCreatedAt = details.pairCreatedAt ?? token.createdAt;
+        const ageMinutes = getTokenAgeMinutes(tokenCreatedAt);
 
-    const shouldMid = mcap >= 15000 && mcap < 80000 && realAge <= 20;
-    const shouldHigh = mcap >= 80000 && realAge <= 120;
+        log(`🔍 Detected ${ca} — MCAP: $${mcap.toLocaleString()}, Age: ${ageMinutes.toFixed(1)} mins`);
 
-    if (shouldMid && !trackedMidTier.has(ca)) {
-      await sendToDiscord(details, MID_TIER_WEBHOOK_CLIENT, 'Mid');
-      trackedMidTier.set(ca, Date.now());
-      goodTokens++;
-    }
+        const tracked = trackedTokens.get(ca) || { midSent: false, highSent: false };
 
-    if (shouldHigh && !trackedHighTier.has(ca)) {
-      await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT, 'High');
-      trackedHighTier.set(ca, Date.now());
-      trackedMidTier.delete(ca); // 🛠️ Clean promote
-      goodTokens++;
-    }
-  })));
+        const shouldSendMid = mcap >= 14690 && mcap < 69000 && ageMinutes <= 20 && !tracked.midSent;
+        const shouldSendHigh = mcap >= 69000 && ageMinutes <= 120 && !tracked.highSent;
 
-  pollInterval = goodTokens >= 2 ? 15000 : 30000;
-  log(`✅ [ROUND ENDED] Tokens checked: ${tokens.length} | Sent: ${goodTokens} | Next poll: ${pollInterval / 1000}s`);
+        if (shouldSendHigh) {
+          await sendToDiscord(details, HIGH_TIER_WEBHOOK_CLIENT, 'High');
+          tracked.highSent = true;
+          goodCount++;
+        } else if (shouldSendMid) {
+          await sendToDiscord(details, MID_TIER_WEBHOOK_CLIENT, 'Mid');
+          tracked.midSent = true;
+          goodCount++;
+        }
+
+        trackedTokens.set(ca, tracked);
+      })
+    )
+  );
+
+  pollInterval = goodCount >= 2 ? 15000 : 30000;
+
+  log(`✅ [ROUND ENDED] Checked ${tokens.length} tokens | Sent ${goodCount} tokens | Next poll: ${pollInterval / 1000}s`);
+  scheduleNextPoll();
 }
 
-async function checkOtherDexTokens() { /* no changes needed */ }
-async function recheckForHighTier() { /* no changes needed */ }
-async function checkGraduatedTokens() { /* no changes needed */ }
-
 function scheduleNextPoll() {
-  setTimeout(async () => {
-    await checkTokens();
-    await checkOtherDexTokens();
-    await recheckForHighTier();
-    await checkGraduatedTokens();
-    scheduleNextPoll();
+  setTimeout(() => {
+    checkTokens();
   }, pollInterval);
 }
 
-// START
 checkTokens();
-scheduleNextPoll();
