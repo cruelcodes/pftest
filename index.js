@@ -256,11 +256,11 @@ async function checkOtherDexTokens() {
         if (PUMP_DEXES.has(dexId)) continue;
 
         const ageMinutes = getTokenAgeMinutes(pairCreatedAt);
-        const buys5m = txns?.m5?.buys ?? 0;
-        const volume5m = volume?.m5 ?? 0;
+        
+        const sells5m = txns?.m5?.sells ?? 0;
         const fdvValue = Number(fdv) || 0;
 
-        if (fdvValue >= 16900 && buys5m >= 5 && volume5m >= 500 && ageMinutes <= 20) {
+        if (fdvValue >= 14690 && sells5m >= 4 && ageMinutes <= 20) {
           await sendToDiscordAlt(pair);
           trackedMidTier.set(tokenAddress, Date.now());
           break;
