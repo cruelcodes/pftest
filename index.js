@@ -23,7 +23,7 @@ const HIGH_TIER_WEBHOOK = process.env.HIGH_TIER_WEBHOOK;
 const MID_TIER_WEBHOOK_CLIENT = new Webhook(MID_TIER_WEBHOOK);
 const HIGH_TIER_WEBHOOK_CLIENT = new Webhook(HIGH_TIER_WEBHOOK);
 
-const hoursPerBlock = 6;
+const hoursPerBlock = 4;
 const keysPerDay = [...MORALIS_KEYS];
 const dailyKeyOrder = shuffleArray(keysPerDay);
 const startOfDay = new Date().setHours(0, 0, 0, 0);
@@ -220,6 +220,25 @@ async function fetchLatestTokenProfiles() {
     return [];
   }
 }
+// 🛠️ fetchTokenPairs function with retry logic
+async function fetchTokenPairs(tokenAddress, retries = 2) {
+  try {
+    const { data } = await axios.get(`https://api.dexscreener.com/tokens/v1/solana/${tokenAddress}`);
+    if (Array.isArray(data)) {
+      return data;
+    }
+    return [];
+  } catch (err) {
+    if (retries > 0) {
+      log(`⚠️ fetchTokenPairs retry for ${tokenAddress} (${retries} left): ${err.message}`);
+      await new Promise(res => setTimeout(res, 1500));
+      return fetchTokenPairs(tokenAddress, retries - 1);
+    }
+    log(`❌ fetchTokenPairs failed for ${tokenAddress}: ${err.message}`);
+    return [];
+  }
+}
+
 
 
 async function checkOtherDexTokens() { 
